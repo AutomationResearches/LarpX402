@@ -1,4 +1,4 @@
-# Larpx402
+# LarpX402
 
 <p align="center">
   <img src="public/images/logo.jpg" alt="Larpx402 Logo" width="400" />
