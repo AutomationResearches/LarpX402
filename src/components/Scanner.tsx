@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import TypingText from '@/components/TypingText';
+import MatrixRain from '@/components/MatrixRain';
 import { Eye, EyeOff, Zap, CheckCircle, AlertTriangle, Binary } from 'lucide-react';
 
 type ScanPhase = 'idle' | 'scanning' | 'detected' | 'eliminating' | 'complete';
@@ -138,6 +139,9 @@ export default function Scanner() {
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8 relative overflow-hidden">
+      {/* Matrix Rain Effect */}
+      <MatrixRain active={phase === 'scanning'} />
+      
       {/* CRT Overlay */}
       <div className="crt-overlay" />
       
