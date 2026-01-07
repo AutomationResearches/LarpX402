@@ -4,6 +4,14 @@ interface MatrixRainProps {
   active: boolean;
 }
 
+interface Drop {
+  y: number;
+  speed: number;
+  opacity: number;
+  char: string;
+  hue: number;
+}
+
 export default function MatrixRain({ active }: MatrixRainProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -21,13 +29,23 @@ export default function MatrixRain({ active }: MatrixRainProps) {
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
 
-    const chars = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789LARPX402';
+    // Mystical character set - mix of katakana, symbols, and brand
+    const chars = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン⌘◊∆∇◈◉⬡⬢⟡✧✦⚝☆★0123456789LARPX402';
     const charArray = chars.split('');
-    const fontSize = 14;
+    const fontSize = 16;
     const columns = Math.floor(canvas.width / fontSize);
-    const drops: number[] = Array(columns).fill(1);
+    
+    // Initialize drops with varied properties
+    const drops: Drop[] = Array(columns).fill(null).map(() => ({
+      y: Math.random() * -100,
+      speed: 0.5 + Math.random() * 1.5,
+      opacity: 0.3 + Math.random() * 0.7,
+      char: charArray[Math.floor(Math.random() * charArray.length)],
+      hue: Math.random() > 0.7 ? 280 + Math.random() * 40 : 140 + Math.random() * 40 // Purple or cyan-green
+    }));
 
     let animationId: number;
+    let time = 0;
 
     const draw = () => {
       if (!active) {
@@ -35,33 +53,58 @@ export default function MatrixRain({ active }: MatrixRainProps) {
         return;
       }
 
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+      // Deeper fade for mysterious trails
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      ctx.fillStyle = '#00ff00';
-      ctx.font = `${fontSize}px monospace`;
+      time += 0.01;
 
       for (let i = 0; i < drops.length; i++) {
-        const char = charArray[Math.floor(Math.random() * charArray.length)];
+        const drop = drops[i];
         const x = i * fontSize;
-        const y = drops[i] * fontSize;
+        const y = drop.y * fontSize;
 
-        // Vary the green color for depth effect
-        const brightness = Math.random();
-        if (brightness > 0.95) {
-          ctx.fillStyle = '#ffffff';
-        } else if (brightness > 0.8) {
-          ctx.fillStyle = '#00ff00';
+        // Change character occasionally
+        if (Math.random() > 0.98) {
+          drop.char = charArray[Math.floor(Math.random() * charArray.length)];
+        }
+
+        // Pulsing opacity based on time
+        const pulseOpacity = drop.opacity * (0.7 + 0.3 * Math.sin(time * 2 + i * 0.1));
+
+        // Leading character - bright white with glow
+        if (Math.random() > 0.92) {
+          ctx.shadowBlur = 20;
+          ctx.shadowColor = `hsla(${drop.hue}, 100%, 70%, 0.8)`;
+          ctx.fillStyle = `hsla(${drop.hue}, 100%, 95%, ${pulseOpacity})`;
+        } else if (Math.random() > 0.7) {
+          // Bright characters
+          ctx.shadowBlur = 12;
+          ctx.shadowColor = `hsla(${drop.hue}, 80%, 50%, 0.5)`;
+          ctx.fillStyle = `hsla(${drop.hue}, 80%, 60%, ${pulseOpacity})`;
         } else {
-          ctx.fillStyle = `rgba(0, 255, 0, ${0.3 + brightness * 0.5})`;
+          // Dimmer trail characters
+          ctx.shadowBlur = 4;
+          ctx.shadowColor = `hsla(${drop.hue}, 70%, 40%, 0.3)`;
+          ctx.fillStyle = `hsla(${drop.hue}, 60%, 40%, ${pulseOpacity * 0.6})`;
         }
 
-        ctx.fillText(char, x, y);
+        ctx.font = `${fontSize}px 'JetBrains Mono', monospace`;
+        ctx.fillText(drop.char, x, y);
 
-        if (y > canvas.height && Math.random() > 0.975) {
-          drops[i] = 0;
+        // Reset shadow for performance
+        ctx.shadowBlur = 0;
+
+        // Move drop down
+        drop.y += drop.speed;
+
+        // Reset when off screen with random delay
+        if (y > canvas.height && Math.random() > 0.99) {
+          drop.y = Math.random() * -20;
+          drop.speed = 0.5 + Math.random() * 1.5;
+          drop.opacity = 0.3 + Math.random() * 0.7;
+          drop.hue = Math.random() > 0.7 ? 280 + Math.random() * 40 : 140 + Math.random() * 40;
         }
-        drops[i]++;
       }
 
       animationId = requestAnimationFrame(draw);
@@ -84,7 +127,7 @@ export default function MatrixRain({ active }: MatrixRainProps) {
   return (
     <canvas
       ref={canvasRef}
-      className="fixed inset-0 pointer-events-none z-0 opacity-30"
+      className="fixed inset-0 pointer-events-none z-0 opacity-50"
       style={{ mixBlendMode: 'screen' }}
     />
   );
