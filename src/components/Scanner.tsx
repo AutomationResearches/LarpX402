@@ -4,8 +4,10 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Eye, EyeOff, Zap, CheckCircle, AlertTriangle, Rocket, Upload, Link, FileText, Shield } from 'lucide-react';
+import { Eye, EyeOff, Zap, CheckCircle, AlertTriangle, Rocket, Upload, Link, FileText, Shield, Globe, History } from 'lucide-react';
 import { Link as RouterLink } from 'react-router-dom';
+import VirusDefinitionStats from './VirusDefinitionStats';
+import BrowserScanner from './BrowserScanner';
 
 type ScanPhase = 'idle' | 'scanning' | 'detected' | 'eliminating' | 'complete' | 'clean';
 type ScanType = 'file' | 'url';
@@ -197,13 +199,21 @@ export default function Scanner() {
             <span className="text-lg font-semibold tracking-tight">LarpX402</span>
           </div>
           
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <RouterLink to="/history">
+              <Button variant="outline" size="sm" className="gap-2">
+                <History className="w-4 h-4" />
+                <span className="hidden sm:inline">History</span>
+              </Button>
+            </RouterLink>
             <RouterLink to="/launchpad">
               <Button variant="outline" size="sm" className="gap-2">
                 <Rocket className="w-4 h-4" />
-                Launchpad
+                <span className="hidden sm:inline">Launchpad</span>
               </Button>
             </RouterLink>
+          </div>
+          <div className="flex items-center gap-4">
             {connected && publicKey && (
               <span className="text-sm text-muted-foreground hidden sm:block">
                 {formatAddress(publicKey.toBase58())}
@@ -431,6 +441,16 @@ export default function Scanner() {
             </div>
           </div>
         )}
+
+        {/* Virus Definition Stats */}
+        <div className="mt-6">
+          <VirusDefinitionStats />
+        </div>
+
+        {/* Browser Scanner */}
+        <div className="mt-6">
+          <BrowserScanner />
+        </div>
       </main>
 
       {/* Footer */}
