@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -9,30 +8,11 @@ import { Separator } from "@/components/ui/separator";
 import { ArrowLeft, Shield, Bell, Zap, Volume2, Eye, Lock, AlertTriangle, Save } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "@/hooks/use-toast";
+import { useSettings } from "@/hooks/useSettings";
 
 const Settings = () => {
   const navigate = useNavigate();
-  
-  // Scanner Sensitivity Settings
-  const [scannerSensitivity, setScannerSensitivity] = useState([75]);
-  const [deepScanEnabled, setDeepScanEnabled] = useState(true);
-  const [heuristicAnalysis, setHeuristicAnalysis] = useState(true);
-  const [cloudScanning, setCloudScanning] = useState(true);
-  
-  // Notification Preferences
-  const [threatAlerts, setThreatAlerts] = useState(true);
-  const [scanComplete, setScanComplete] = useState(true);
-  const [updateNotifications, setUpdateNotifications] = useState(true);
-  const [soundEnabled, setSoundEnabled] = useState(false);
-  const [alertFrequency, setAlertFrequency] = useState("immediate");
-  
-  // Protection Levels
-  const [protectionLevel, setProtectionLevel] = useState("balanced");
-  const [realTimeProtection, setRealTimeProtection] = useState(true);
-  const [webProtection, setWebProtection] = useState(true);
-  const [downloadScanning, setDownloadScanning] = useState(true);
-  const [phishingProtection, setPhishingProtection] = useState(true);
-  const [trackingProtection, setTrackingProtection] = useState(true);
+  const { settings, updateSetting, saveSettings, resetSettings } = useSettings();
 
   const getSensitivityLabel = (value: number) => {
     if (value < 30) return "Low";
@@ -42,6 +22,7 @@ const Settings = () => {
   };
 
   const handleSaveSettings = () => {
+    saveSettings();
     toast({
       title: "Settings Saved",
       description: "Your security preferences have been updated successfully.",
@@ -49,22 +30,7 @@ const Settings = () => {
   };
 
   const handleResetDefaults = () => {
-    setScannerSensitivity([75]);
-    setDeepScanEnabled(true);
-    setHeuristicAnalysis(true);
-    setCloudScanning(true);
-    setThreatAlerts(true);
-    setScanComplete(true);
-    setUpdateNotifications(true);
-    setSoundEnabled(false);
-    setAlertFrequency("immediate");
-    setProtectionLevel("balanced");
-    setRealTimeProtection(true);
-    setWebProtection(true);
-    setDownloadScanning(true);
-    setPhishingProtection(true);
-    setTrackingProtection(true);
-    
+    resetSettings();
     toast({
       title: "Settings Reset",
       description: "All settings have been restored to defaults.",
@@ -117,12 +83,12 @@ const Settings = () => {
               <div className="flex items-center justify-between">
                 <Label>Detection Sensitivity</Label>
                 <span className="text-sm font-medium text-primary">
-                  {getSensitivityLabel(scannerSensitivity[0])} ({scannerSensitivity[0]}%)
+                  {getSensitivityLabel(settings.scannerSensitivity[0])} ({settings.scannerSensitivity[0]}%)
                 </span>
               </div>
               <Slider
-                value={scannerSensitivity}
-                onValueChange={setScannerSensitivity}
+                value={settings.scannerSensitivity}
+                onValueChange={(value) => updateSetting("scannerSensitivity", value)}
                 max={100}
                 step={5}
                 className="w-full"
@@ -140,7 +106,7 @@ const Settings = () => {
                   <Label>Deep Scan Analysis</Label>
                   <p className="text-xs text-muted-foreground">Perform thorough analysis of files and URLs</p>
                 </div>
-                <Switch checked={deepScanEnabled} onCheckedChange={setDeepScanEnabled} />
+                <Switch checked={settings.deepScanEnabled} onCheckedChange={(v) => updateSetting("deepScanEnabled", v)} />
               </div>
 
               <div className="flex items-center justify-between">
@@ -148,7 +114,7 @@ const Settings = () => {
                   <Label>Heuristic Analysis</Label>
                   <p className="text-xs text-muted-foreground">Detect unknown threats using behavior patterns</p>
                 </div>
-                <Switch checked={heuristicAnalysis} onCheckedChange={setHeuristicAnalysis} />
+                <Switch checked={settings.heuristicAnalysis} onCheckedChange={(v) => updateSetting("heuristicAnalysis", v)} />
               </div>
 
               <div className="flex items-center justify-between">
@@ -156,7 +122,7 @@ const Settings = () => {
                   <Label>Cloud-Based Scanning</Label>
                   <p className="text-xs text-muted-foreground">Use cloud intelligence for enhanced detection</p>
                 </div>
-                <Switch checked={cloudScanning} onCheckedChange={setCloudScanning} />
+                <Switch checked={settings.cloudScanning} onCheckedChange={(v) => updateSetting("cloudScanning", v)} />
               </div>
             </div>
           </CardContent>
@@ -180,7 +146,7 @@ const Settings = () => {
                   <Label>Threat Alerts</Label>
                   <p className="text-xs text-muted-foreground">Notify when threats are detected</p>
                 </div>
-                <Switch checked={threatAlerts} onCheckedChange={setThreatAlerts} />
+                <Switch checked={settings.threatAlerts} onCheckedChange={(v) => updateSetting("threatAlerts", v)} />
               </div>
 
               <div className="flex items-center justify-between">
@@ -188,7 +154,7 @@ const Settings = () => {
                   <Label>Scan Complete Notifications</Label>
                   <p className="text-xs text-muted-foreground">Notify when scans finish</p>
                 </div>
-                <Switch checked={scanComplete} onCheckedChange={setScanComplete} />
+                <Switch checked={settings.scanComplete} onCheckedChange={(v) => updateSetting("scanComplete", v)} />
               </div>
 
               <div className="flex items-center justify-between">
@@ -196,7 +162,7 @@ const Settings = () => {
                   <Label>Update Notifications</Label>
                   <p className="text-xs text-muted-foreground">Notify about virus definition updates</p>
                 </div>
-                <Switch checked={updateNotifications} onCheckedChange={setUpdateNotifications} />
+                <Switch checked={settings.updateNotifications} onCheckedChange={(v) => updateSetting("updateNotifications", v)} />
               </div>
 
               <div className="flex items-center justify-between">
@@ -207,7 +173,7 @@ const Settings = () => {
                   </Label>
                   <p className="text-xs text-muted-foreground">Play sounds for alerts</p>
                 </div>
-                <Switch checked={soundEnabled} onCheckedChange={setSoundEnabled} />
+                <Switch checked={settings.soundEnabled} onCheckedChange={(v) => updateSetting("soundEnabled", v)} />
               </div>
             </div>
 
@@ -215,7 +181,7 @@ const Settings = () => {
 
             <div className="space-y-2">
               <Label>Alert Frequency</Label>
-              <Select value={alertFrequency} onValueChange={setAlertFrequency}>
+              <Select value={settings.alertFrequency} onValueChange={(v) => updateSetting("alertFrequency", v)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -244,7 +210,7 @@ const Settings = () => {
           <CardContent className="space-y-6">
             <div className="space-y-2">
               <Label>Protection Mode</Label>
-              <Select value={protectionLevel} onValueChange={setProtectionLevel}>
+              <Select value={settings.protectionLevel} onValueChange={(v) => updateSetting("protectionLevel", v)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -288,7 +254,7 @@ const Settings = () => {
                     <p className="text-xs text-muted-foreground">Monitor system continuously for threats</p>
                   </div>
                 </div>
-                <Switch checked={realTimeProtection} onCheckedChange={setRealTimeProtection} />
+                <Switch checked={settings.realTimeProtection} onCheckedChange={(v) => updateSetting("realTimeProtection", v)} />
               </div>
 
               <div className="flex items-center justify-between">
@@ -299,7 +265,7 @@ const Settings = () => {
                     <p className="text-xs text-muted-foreground">Block malicious websites and downloads</p>
                   </div>
                 </div>
-                <Switch checked={webProtection} onCheckedChange={setWebProtection} />
+                <Switch checked={settings.webProtection} onCheckedChange={(v) => updateSetting("webProtection", v)} />
               </div>
 
               <div className="flex items-center justify-between">
@@ -310,7 +276,7 @@ const Settings = () => {
                     <p className="text-xs text-muted-foreground">Automatically scan downloaded files</p>
                   </div>
                 </div>
-                <Switch checked={downloadScanning} onCheckedChange={setDownloadScanning} />
+                <Switch checked={settings.downloadScanning} onCheckedChange={(v) => updateSetting("downloadScanning", v)} />
               </div>
 
               <div className="flex items-center justify-between">
@@ -321,7 +287,7 @@ const Settings = () => {
                     <p className="text-xs text-muted-foreground">Detect and block phishing attempts</p>
                   </div>
                 </div>
-                <Switch checked={phishingProtection} onCheckedChange={setPhishingProtection} />
+                <Switch checked={settings.phishingProtection} onCheckedChange={(v) => updateSetting("phishingProtection", v)} />
               </div>
 
               <div className="flex items-center justify-between">
@@ -332,7 +298,7 @@ const Settings = () => {
                     <p className="text-xs text-muted-foreground">Block online trackers and fingerprinting</p>
                   </div>
                 </div>
-                <Switch checked={trackingProtection} onCheckedChange={setTrackingProtection} />
+                <Switch checked={settings.trackingProtection} onCheckedChange={(v) => updateSetting("trackingProtection", v)} />
               </div>
             </div>
           </CardContent>
