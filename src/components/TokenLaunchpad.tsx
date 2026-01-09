@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Slider } from '@/components/ui/slider';
 import { Rocket, Upload, ExternalLink, Loader2, AlertCircle, CheckCircle, Skull, Plus, X, Users, Wallet, Coins } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -511,18 +512,48 @@ export default function TokenLaunchpad({ virusThreat }: TokenLaunchpadProps) {
                     value={initialBuyAmount}
                     onChange={(e) => setInitialBuyAmount(e.target.value)}
                     placeholder="0.1"
-                    className="bg-background border-border text-sm"
+                    className="bg-background border-border text-sm w-24"
                     min="0"
                     max="10"
                     step="0.01"
                   />
                   <span className="text-sm text-muted-foreground whitespace-nowrap">SOL</span>
                   {walletBalance !== null && (
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground bg-background px-2 py-1 rounded border border-border">
-                      <Wallet className="w-3 h-3" />
-                      <span>{walletBalance.toFixed(3)}</span>
-                    </div>
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => {
+                          const maxAmount = Math.min(Math.max(walletBalance - 0.01, 0), 10);
+                          setInitialBuyAmount(maxAmount.toFixed(3));
+                        }}
+                      >
+                        Max
+                      </Button>
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground bg-background px-2 py-1 rounded border border-border">
+                        <Wallet className="w-3 h-3" />
+                        <span>{walletBalance.toFixed(3)}</span>
+                      </div>
+                    </>
                   )}
+                </div>
+
+                {/* Slider */}
+                <div className="space-y-2">
+                  <Slider
+                    value={[Math.min(parseFloat(initialBuyAmount) || 0, 10)]}
+                    onValueChange={(value) => setInitialBuyAmount(value[0].toFixed(2))}
+                    max={10}
+                    min={0}
+                    step={0.1}
+                    className="w-full"
+                  />
+                  <div className="flex justify-between text-[10px] text-muted-foreground">
+                    <span>0 SOL</span>
+                    <span>5 SOL</span>
+                    <span>10 SOL</span>
+                  </div>
                 </div>
                 
                 {/* Token Allocation Preview */}
