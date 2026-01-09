@@ -71,6 +71,7 @@ export default function TokenLaunchpad({ virusThreat }: TokenLaunchpadProps) {
   const [virusImageUsed, setVirusImageUsed] = useState(false);
   const [status, setStatus] = useState<LaunchStatus>('idle');
   const [signingStep, setSigningStep] = useState<number>(0); // 0=none, 1=config1, 2=config2, 3=launch
+  const [completedTxSignatures, setCompletedTxSignatures] = useState<string[]>([]); // Track completed config tx sigs
   const [error, setError] = useState<string>('');
   const [txSignature, setTxSignature] = useState<string>('');
   const [mintAddress, setMintAddress] = useState<string>('');
@@ -270,6 +271,7 @@ export default function TokenLaunchpad({ virusThreat }: TokenLaunchpadProps) {
 
       setStatus('signing-config');
       setSigningStep(1);
+      setCompletedTxSignatures([]);
       
       const bs58 = await import('bs58');
       let launchSignature: string;
@@ -292,6 +294,8 @@ export default function TokenLaunchpad({ virusThreat }: TokenLaunchpadProps) {
             preflightCommitment: 'confirmed',
           });
           await connection.confirmTransaction(configSig, 'confirmed');
+          // Store the completed signature for UI display
+          setCompletedTxSignatures(prev => [...prev, configSig]);
           setStatus('signing-config');
         }
         
@@ -380,6 +384,7 @@ export default function TokenLaunchpad({ virusThreat }: TokenLaunchpadProps) {
     setImagePreview('');
     setStatus('idle');
     setSigningStep(0);
+    setCompletedTxSignatures([]);
     setError('');
     setTxSignature('');
     setMintAddress('');
@@ -448,6 +453,24 @@ export default function TokenLaunchpad({ virusThreat }: TokenLaunchpadProps) {
             </span>
           ))}
         </div>
+        {/* Show completed transaction links */}
+        {completedTxSignatures.length > 0 && (
+          <div className="mt-3 pt-3 border-t border-border space-y-1">
+            {completedTxSignatures.map((sig, idx) => (
+              <a
+                key={sig}
+                href={`https://solscan.io/tx/${sig}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-xs text-accent hover:underline"
+              >
+                <CheckCircle className="w-3 h-3" />
+                Config {idx + 1} confirmed
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            ))}
+          </div>
+        )}
       </div>
     );
   };
