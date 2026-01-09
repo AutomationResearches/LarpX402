@@ -205,10 +205,28 @@ serve(async (req) => {
       );
     }
 
+    // If config needs creation, return config transactions first
+    // User must sign these and wait for confirmation before getting launch tx
+    if (needsCreation && configTransactions.length > 0) {
+      console.log('Config needs creation, returning config transactions only');
+      return new Response(
+        JSON.stringify({
+          success: true,
+          step: 'config',
+          configTransactions,
+          configKey,
+          tokenMint,
+          metadataUri: tokenMetadata,
+          imageUrl: savedImageUrl,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // ========================================
-    // STEP 3: Create Launch Transaction
+    // STEP 3: Create Launch Transaction (only if config exists)
     // ========================================
-    console.log('Step 3: Creating launch transaction...');
+    console.log('Step 3: Creating launch transaction (config exists)...');
 
     const launchPayload = {
       ipfs: tokenMetadata,
@@ -269,25 +287,7 @@ serve(async (req) => {
 
     console.log('Launch transaction created successfully');
 
-    // If config needs creation, return all transactions together
-    // User signs config txs first, then launch tx
-    if (needsCreation && configTransactions.length > 0) {
-      console.log('Config needs creation, returning all transactions');
-      return new Response(
-        JSON.stringify({
-          success: true,
-          step: 'multi',
-          configTransactions,
-          launchTransaction,
-          tokenMint,
-          metadataUri: tokenMetadata,
-          imageUrl: savedImageUrl,
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Single transaction flow - just the launch
+    // Single transaction flow - config already exists
     return new Response(
       JSON.stringify({
         success: true,
