@@ -24,9 +24,10 @@ interface Threat {
   type: string;
   severity: 'low' | 'medium' | 'high' | 'critical';
   eliminated: boolean;
+  destroying: boolean;
 }
 
-const FILE_THREATS: Omit<Threat, 'id' | 'eliminated'>[] = [
+const FILE_THREATS: Omit<Threat, 'id' | 'eliminated' | 'destroying'>[] = [
   { name: 'trojan.generic.malware', type: 'TROJAN', severity: 'critical' },
   { name: 'adware.tracking.cookies', type: 'ADWARE', severity: 'medium' },
   { name: 'spyware.keylogger.hidden', type: 'SPYWARE', severity: 'critical' },
@@ -35,7 +36,7 @@ const FILE_THREATS: Omit<Threat, 'id' | 'eliminated'>[] = [
   { name: 'exploit.cve.2024', type: 'EXPLOIT', severity: 'high' },
 ];
 
-const URL_THREATS: Omit<Threat, 'id' | 'eliminated'>[] = [
+const URL_THREATS: Omit<Threat, 'id' | 'eliminated' | 'destroying'>[] = [
   { name: 'phishing.credential.steal', type: 'PHISHING', severity: 'critical' },
   { name: 'malware.download.redirect', type: 'MALWARE', severity: 'critical' },
   { name: 'cryptojacker.script.inject', type: 'CRYPTOJACKER', severity: 'high' },
@@ -137,6 +138,7 @@ export default function Scanner() {
         ...t,
         id: `threat-${i}`,
         eliminated: false,
+        destroying: false,
       }));
       
       setThreats(selectedThreats);
@@ -160,17 +162,31 @@ export default function Scanner() {
     setPhase('eliminating');
     
     threats.forEach((threat, index) => {
+      // First, start the destroying animation
       setTimeout(() => {
+        addLog(`> TARGETING: ${threat.name}`);
         setThreats(prev => prev.map(t => 
-          t.id === threat.id ? { ...t, eliminated: true } : t
+          t.id === threat.id ? { ...t, destroying: true } : t
         ));
-        addLog(`> BLOCKED: ${threat.name}`);
+        
+        // Then after animation, mark as eliminated and remove
+        setTimeout(() => {
+          addLog(`> ☠️ DESTROYED: ${threat.name}`);
+          setThreats(prev => prev.map(t => 
+            t.id === threat.id ? { ...t, eliminated: true, destroying: false } : t
+          ));
+          
+          // Remove threat from list after elimination
+          setTimeout(() => {
+            setThreats(prev => prev.filter(t => t.id !== threat.id));
+          }, 300);
+        }, 600);
         
         if (index === threats.length - 1) {
           setTimeout(async () => {
             setPhase('complete');
-            addLog('> ALL THREATS NEUTRALIZED');
-            addLog('> Your browser is now protected');
+            addLog('> 💀 ALL THREATS ANNIHILATED');
+            addLog('> Your system is now protected');
             
             // Save to history
             await saveScanToHistory({
@@ -180,9 +196,9 @@ export default function Scanner() {
               threats_blocked: threats.length,
               status: 'protected',
             });
-          }, 800);
+          }, 1200);
         }
-      }, (index + 1) * 800);
+      }, index * 1000);
     });
   };
 
@@ -409,24 +425,40 @@ export default function Scanner() {
           {(phase === 'detected' || phase === 'eliminating' || phase === 'complete') && threats.length > 0 && (
             <div className="mb-6 space-y-2">
               <h3 className="text-xs text-muted-foreground uppercase tracking-wider mb-3">
-                Detected Threats
+                {phase === 'eliminating' ? '🔥 Destroying Threats' : 'Detected Threats'}
               </h3>
               {threats.map((threat) => (
                 <div 
                   key={threat.id}
-                  className={`flex items-center justify-between p-3 border border-border rounded-md bg-secondary/50 transition-all duration-300 ${
-                    threat.eliminated ? 'opacity-40' : ''
+                  className={`flex items-center justify-between p-3 border rounded-md transition-all duration-300 overflow-hidden ${
+                    threat.destroying 
+                      ? 'border-red-500 bg-red-500/20 animate-pulse scale-95 shadow-lg shadow-red-500/50' 
+                      : threat.eliminated 
+                        ? 'border-accent bg-accent/10 scale-90 opacity-0' 
+                        : 'border-border bg-secondary/50'
                   }`}
+                  style={{
+                    transform: threat.destroying ? 'translateX(0) rotate(0deg)' : threat.eliminated ? 'translateX(100px) rotate(10deg)' : 'translateX(0)',
+                    transition: 'all 0.3s ease-out',
+                  }}
                 >
                   <div className="flex items-center gap-3">
-                    <Eye className={`w-4 h-4 ${threat.eliminated ? 'text-accent' : 'text-destructive'}`} />
+                    {threat.destroying ? (
+                      <Zap className="w-4 h-4 text-red-500 animate-bounce" />
+                    ) : (
+                      <Eye className={`w-4 h-4 ${threat.eliminated ? 'text-accent' : 'text-destructive'}`} />
+                    )}
                     <div>
-                      <p className={`text-sm ${threat.eliminated ? 'line-through' : ''}`}>{threat.name}</p>
+                      <p className={`text-sm ${threat.destroying ? 'text-red-400' : ''} ${threat.eliminated ? 'line-through text-accent' : ''}`}>
+                        {threat.destroying ? `💥 ${threat.name}` : threat.name}
+                      </p>
                       <p className="text-xs text-muted-foreground">{threat.type}</p>
                     </div>
                   </div>
-                  <span className={`text-xs uppercase font-medium ${getSeverityColor(threat.severity)}`}>
-                    {threat.eliminated ? 'BLOCKED' : threat.severity}
+                  <span className={`text-xs uppercase font-bold ${
+                    threat.destroying ? 'text-red-500 animate-pulse' : getSeverityColor(threat.severity)
+                  }`}>
+                    {threat.destroying ? '☠️ DESTROYING' : threat.eliminated ? '✓ ELIMINATED' : threat.severity}
                   </span>
                 </div>
               ))}
