@@ -141,100 +141,15 @@ serve(async (req) => {
     console.log(`Token info created: mint=${tokenMint}, metadata=${tokenMetadata}`);
 
     // ========================================
-    // STEP 2: Create Fee Share Config
+    // STEP 2: Create Launch Transaction (skip fee share config for single-sign flow)
     // ========================================
-    console.log('Step 2: Creating fee share config...');
-
-    // Creator gets 100% of fees (10000 bps)
-    const feeSharePayload = {
-      payer: creatorPublicKey,
-      baseMint: tokenMint,
-      claimersArray: [creatorPublicKey],
-      basisPointsArray: [10000],
-    };
-
-    console.log('Fee share payload:', JSON.stringify(feeSharePayload));
-
-    const feeShareResponse = await fetch(`${BAGS_API_URL}/fee-share/config`, {
-      method: 'POST',
-      headers: {
-        'x-api-key': BAGS_API_KEY,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(feeSharePayload),
-    });
-
-    const feeShareText = await feeShareResponse.text();
-    console.log(`Fee share response status: ${feeShareResponse.status}`);
-    console.log(`Fee share response: ${feeShareText}`);
-
-    if (!feeShareResponse.ok) {
-      console.error('Fee share config creation failed:', feeShareText);
-      let errorMessage = 'Failed to create fee share config';
-      try {
-        const errorJson = JSON.parse(feeShareText);
-        errorMessage = errorJson.error || errorJson.response || errorMessage;
-      } catch { /* use default */ }
-      return new Response(
-        JSON.stringify({ error: errorMessage }),
-        { status: feeShareResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    let feeShareResult;
-    try {
-      feeShareResult = JSON.parse(feeShareText);
-    } catch {
-      console.error('Failed to parse fee share response:', feeShareText);
-      return new Response(
-        JSON.stringify({ error: 'Invalid fee share response from Bags API' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const configKey = feeShareResult.response?.meteoraConfigKey;
-    const needsCreation = feeShareResult.response?.needsCreation;
-    const configTransactions = feeShareResult.response?.transactions || [];
-
-    console.log(`Fee share config: configKey=${configKey}, needsCreation=${needsCreation}, txCount=${configTransactions.length}`);
-
-    if (!configKey) {
-      console.error('Missing configKey in fee share response:', feeShareResult);
-      return new Response(
-        JSON.stringify({ error: 'Failed to get fee share config key' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // If config needs creation, return config transactions first
-    // Client must sign these, then call again with configConfirmed=true
-    if (needsCreation && configTransactions.length > 0) {
-      console.log('Config needs creation, returning config transactions for signing first');
-      return new Response(
-        JSON.stringify({
-          success: true,
-          step: 'config',
-          configTransactions,
-          configKey,
-          tokenMint,
-          metadataUri: tokenMetadata,
-          imageUrl: savedImageUrl,
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // ========================================
-    // STEP 3: Create Launch Transaction
-    // ========================================
-    console.log('Step 3: Creating launch transaction...');
+    console.log('Step 2: Creating launch transaction...');
 
     const launchPayload = {
       ipfs: tokenMetadata,
       tokenMint: tokenMint,
       wallet: creatorPublicKey,
       initialBuyLamports: initialBuyLamports || 0,
-      configKey: configKey,
     };
 
     console.log('Launch payload:', JSON.stringify(launchPayload));
