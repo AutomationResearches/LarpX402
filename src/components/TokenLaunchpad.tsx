@@ -751,6 +751,7 @@ export default function TokenLaunchpad({ virusThreat }: TokenLaunchpadProps) {
             formData={formData}
             initialBuyEnabled={initialBuyEnabled}
             initialBuyAmount={initialBuyAmount}
+            feeShareEnabled={feeShareEnabled && feeClaimers.length > 0}
             onConfirm={launchToken}
             disabled={!connected || (status !== 'idle' && status !== 'error')}
             isLoading={status !== 'idle' && status !== 'error'}
@@ -768,6 +769,7 @@ interface LaunchConfirmDialogProps {
   formData: { name: string; symbol: string };
   initialBuyEnabled: boolean;
   initialBuyAmount: string;
+  feeShareEnabled: boolean;
   onConfirm: () => void;
   disabled: boolean;
   isLoading: boolean;
@@ -779,6 +781,7 @@ function LaunchConfirmDialog({
   formData,
   initialBuyEnabled,
   initialBuyAmount,
+  feeShareEnabled,
   onConfirm,
   disabled,
   isLoading,
@@ -798,6 +801,7 @@ function LaunchConfirmDialog({
   };
 
   const buyAmount = parseFloat(initialBuyAmount) || 0;
+  const needsMultipleSignatures = feeShareEnabled;
 
   return (
     <>
@@ -849,6 +853,12 @@ function LaunchConfirmDialog({
                   <div className="flex items-center gap-2 p-2 bg-yellow-500/10 border border-yellow-500/30 rounded-md text-yellow-500">
                     <AlertCircle className="w-4 h-4 flex-shrink-0" />
                     <p className="text-xs">Large initial buy detected. Make sure you want to spend {buyAmount} SOL.</p>
+                  </div>
+                )}
+                {needsMultipleSignatures && (
+                  <div className="flex items-center gap-2 p-2 bg-blue-500/10 border border-blue-500/30 rounded-md text-blue-400">
+                    <Wallet className="w-4 h-4 flex-shrink-0" />
+                    <p className="text-xs">Fee sharing requires multiple wallet signatures to configure on-chain.</p>
                   </div>
                 )}
                 <p className="text-xs text-muted-foreground">This action cannot be undone. The token will be created on-chain.</p>
