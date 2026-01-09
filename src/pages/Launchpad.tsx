@@ -1,6 +1,6 @@
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { useWallet } from '@solana/wallet-adapter-react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Eye } from 'lucide-react';
 import TokenLaunchpad from '@/components/TokenLaunchpad';
@@ -9,8 +9,18 @@ import AnalyticsDashboard from '@/components/AnalyticsDashboard';
 import { NetworkSelector } from '@/components/NetworkSelector';
 import { NetworkBadge } from '@/components/NetworkBadge';
 
+interface VirusThreatData {
+  name: string;
+  symbol: string;
+  description: string;
+  logoUrl?: string;
+  severity: string;
+}
+
 export default function Launchpad() {
   const { connected, publicKey } = useWallet();
+  const location = useLocation();
+  const virusThreat = (location.state as { virusThreat?: VirusThreatData })?.virusThreat;
 
   const formatAddress = (address: string) => `${address.slice(0, 4)}...${address.slice(-4)}`;
 
@@ -57,7 +67,7 @@ export default function Launchpad() {
 
           {/* Center Column - Launchpad */}
           <div className="lg:col-span-5">
-            <TokenLaunchpad />
+            <TokenLaunchpad virusThreat={virusThreat} />
           </div>
 
           {/* Right Column - Recent Launches */}

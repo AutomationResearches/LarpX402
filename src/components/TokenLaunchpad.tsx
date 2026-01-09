@@ -1,12 +1,24 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { Keypair, VersionedTransaction, SystemProgram, PublicKey, Transaction } from '@solana/web3.js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Rocket, Upload, ExternalLink, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
+import { Rocket, Upload, ExternalLink, Loader2, AlertCircle, CheckCircle, Skull } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+
+interface VirusThreatData {
+  name: string;
+  symbol: string;
+  description: string;
+  logoUrl?: string;
+  severity: string;
+}
+
+interface TokenLaunchpadProps {
+  virusThreat?: VirusThreatData;
+}
 
 interface LaunchFormData {
   name: string;
@@ -22,7 +34,7 @@ type LaunchStatus = 'idle' | 'uploading' | 'creating' | 'paying' | 'signing' | '
 const PLATFORM_FEE_SOL = 0.01;
 const TREASURY_WALLET = 'YOUR_TREASURY_WALLET_ADDRESS';
 
-export default function TokenLaunchpad() {
+export default function TokenLaunchpad({ virusThreat }: TokenLaunchpadProps) {
   const { publicKey, signTransaction, sendTransaction, connected } = useWallet();
   const { connection } = useConnection();
   
@@ -37,11 +49,37 @@ export default function TokenLaunchpad() {
   
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>('');
+  const [virusImageUsed, setVirusImageUsed] = useState(false);
   const [status, setStatus] = useState<LaunchStatus>('idle');
   const [error, setError] = useState<string>('');
   const [txSignature, setTxSignature] = useState<string>('');
   const [mintAddress, setMintAddress] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Pre-fill form when virus threat data is passed
+  useEffect(() => {
+    if (virusThreat) {
+      setFormData({
+        name: virusThreat.name,
+        symbol: virusThreat.symbol,
+        description: virusThreat.description,
+        twitter: '',
+        telegram: '',
+        website: '',
+      });
+      if (virusThreat.logoUrl) {
+        setImagePreview(virusThreat.logoUrl);
+        setVirusImageUsed(true);
+        // Convert base64 to file
+        fetch(virusThreat.logoUrl)
+          .then(res => res.blob())
+          .then(blob => {
+            const file = new File([blob], 'virus-logo.png', { type: 'image/png' });
+            setImageFile(file);
+          });
+      }
+    }
+  }, [virusThreat]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -212,8 +250,12 @@ export default function TokenLaunchpad() {
     <div className="border border-border rounded-lg bg-card p-5">
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h2 className="text-lg font-semibold">Launch Token</h2>
-          <p className="text-sm text-muted-foreground">Deploy to PumpFun</p>
+          <h2 className="text-lg font-semibold">
+            {virusThreat ? '🦠 Deploy Virus Token' : 'Launch Token'}
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            {virusThreat ? 'Deploy captured malware on BAGS' : 'Deploy to PumpFun'}
+          </p>
         </div>
         <div className="flex items-center gap-2 text-sm">
           <span className="text-muted-foreground">Fee:</span>
@@ -268,11 +310,21 @@ export default function TokenLaunchpad() {
           <div>
             <Label className="text-xs text-muted-foreground">Token Image</Label>
             <div 
-              className="mt-1.5 border border-dashed border-border rounded-md p-4 text-center cursor-pointer hover:border-accent/50 transition-colors"
+              className={`mt-1.5 border border-dashed rounded-md p-4 text-center cursor-pointer transition-colors ${
+                virusImageUsed ? 'border-purple-500/50 bg-purple-500/10' : 'border-border hover:border-accent/50'
+              }`}
               onClick={() => fileInputRef.current?.click()}
             >
               {imagePreview ? (
-                <img src={imagePreview} alt="Token" className="w-16 h-16 mx-auto object-cover rounded-md" />
+                <div className="relative">
+                  <img src={imagePreview} alt="Token" className="w-16 h-16 mx-auto object-cover rounded-md" />
+                  {virusImageUsed && (
+                    <div className="mt-2 flex items-center justify-center gap-1 text-xs text-purple-400">
+                      <Skull className="w-3 h-3" />
+                      AI Generated Virus Logo
+                    </div>
+                  )}
+                </div>
               ) : (
                 <>
                   <Upload className="w-6 h-6 mx-auto mb-2 text-muted-foreground" />

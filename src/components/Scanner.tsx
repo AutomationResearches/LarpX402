@@ -4,8 +4,8 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Eye, EyeOff, Zap, CheckCircle, AlertTriangle, Rocket, Upload, Link, FileText, Shield, Globe, History, Settings } from 'lucide-react';
-import { Link as RouterLink } from 'react-router-dom';
+import { Eye, EyeOff, Zap, CheckCircle, AlertTriangle, Rocket, Upload, Link, FileText, Shield, Globe, History, Settings, Skull } from 'lucide-react';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import VirusDefinitionStats from './VirusDefinitionStats';
 import BrowserScanner from './BrowserScanner';
 import URLScanner from './URLScanner';
@@ -14,6 +14,7 @@ import RealTimeProtection from './RealTimeProtection';
 import { ThreatAlertSystem } from './ThreatAlertSystem';
 import { saveScanToHistory } from '@/lib/scanHistory';
 import { NetworkBadge } from './NetworkBadge';
+import { supabase } from '@/integrations/supabase/client';
 
 type ScanPhase = 'idle' | 'scanning' | 'detected' | 'eliminating' | 'complete' | 'clean';
 type ScanType = 'file' | 'url';
@@ -25,6 +26,8 @@ interface Threat {
   severity: 'low' | 'medium' | 'high' | 'critical';
   eliminated: boolean;
   destroying: boolean;
+  logoUrl?: string;
+  generatingLogo?: boolean;
 }
 
 const FILE_THREATS: Omit<Threat, 'id' | 'eliminated' | 'destroying'>[] = [
@@ -47,6 +50,7 @@ const URL_THREATS: Omit<Threat, 'id' | 'eliminated' | 'destroying'>[] = [
 
 export default function Scanner() {
   const { connected, publicKey } = useWallet();
+  const navigate = useNavigate();
   const [phase, setPhase] = useState<ScanPhase>('idle');
   const [progress, setProgress] = useState(0);
   const [threats, setThreats] = useState<Threat[]>([]);
@@ -54,6 +58,7 @@ export default function Scanner() {
   const [scanType, setScanType] = useState<ScanType>('file');
   const [urlInput, setUrlInput] = useState('');
   const [fileName, setFileName] = useState('');
+  const [selectedThreatForDeploy, setSelectedThreatForDeploy] = useState<Threat | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const formatAddress = (address: string) => `${address.slice(0, 4)}...${address.slice(-4)}`;
@@ -129,6 +134,36 @@ export default function Scanner() {
     }
   }, [phase, scanType, addLog]);
 
+  // Generate virus logos for detected threats
+  const generateVirusLogo = async (threat: Threat) => {
+    try {
+      setThreats(prev => prev.map(t => 
+        t.id === threat.id ? { ...t, generatingLogo: true } : t
+      ));
+      
+      const { data, error } = await supabase.functions.invoke('generate-virus-logo', {
+        body: {
+          threatName: threat.name,
+          threatType: threat.type,
+          severity: threat.severity,
+        },
+      });
+
+      if (error) throw error;
+      
+      setThreats(prev => prev.map(t => 
+        t.id === threat.id ? { ...t, logoUrl: data.imageUrl, generatingLogo: false } : t
+      ));
+      
+      addLog(`> 🎨 Logo generated for ${threat.name}`);
+    } catch (err) {
+      console.error('Failed to generate logo:', err);
+      setThreats(prev => prev.map(t => 
+        t.id === threat.id ? { ...t, generatingLogo: false } : t
+      ));
+    }
+  };
+
   useEffect(() => {
     if (phase === 'detected') {
       const threatList = scanType === 'file' ? FILE_THREATS : URL_THREATS;
@@ -139,10 +174,17 @@ export default function Scanner() {
         id: `threat-${i}`,
         eliminated: false,
         destroying: false,
+        logoUrl: undefined,
+        generatingLogo: false,
       }));
       
       setThreats(selectedThreats);
       addLog(`> ⚠️ ${selectedThreats.length} THREAT(S) DETECTED`);
+      
+      // Auto-generate logos for all threats
+      selectedThreats.forEach((threat) => {
+        generateVirusLogo(threat);
+      });
     } else if (phase === 'clean') {
       addLog('> ✓ NO THREATS DETECTED');
       addLog('> Target is safe to use');
@@ -157,6 +199,22 @@ export default function Scanner() {
       });
     }
   }, [phase, scanType, addLog, fileName, urlInput]);
+
+  const deployViaBags = (threat: Threat) => {
+    setSelectedThreatForDeploy(threat);
+    // Navigate to launchpad with threat data
+    navigate('/launchpad', { 
+      state: { 
+        virusThreat: {
+          name: threat.name.split('.').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+          symbol: threat.type.slice(0, 5),
+          description: `A dangerous ${threat.type} threat detected and captured. Deploy this malware as a token on BAGS!`,
+          logoUrl: threat.logoUrl,
+          severity: threat.severity,
+        }
+      }
+    });
+  };
 
   const eliminateThreats = () => {
     setPhase('eliminating');
@@ -423,14 +481,14 @@ export default function Scanner() {
 
           {/* Threat List */}
           {(phase === 'detected' || phase === 'eliminating' || phase === 'complete') && threats.length > 0 && (
-            <div className="mb-6 space-y-2">
+            <div className="mb-6 space-y-3">
               <h3 className="text-xs text-muted-foreground uppercase tracking-wider mb-3">
                 {phase === 'eliminating' ? '🔥 Destroying Threats' : 'Detected Threats'}
               </h3>
               {threats.map((threat) => (
                 <div 
                   key={threat.id}
-                  className={`flex items-center justify-between p-3 border rounded-md transition-all duration-300 overflow-hidden ${
+                  className={`p-4 border rounded-lg transition-all duration-300 overflow-hidden ${
                     threat.destroying 
                       ? 'border-red-500 bg-red-500/20 animate-pulse scale-95 shadow-lg shadow-red-500/50' 
                       : threat.eliminated 
@@ -442,24 +500,50 @@ export default function Scanner() {
                     transition: 'all 0.3s ease-out',
                   }}
                 >
-                  <div className="flex items-center gap-3">
-                    {threat.destroying ? (
-                      <Zap className="w-4 h-4 text-red-500 animate-bounce" />
-                    ) : (
-                      <Eye className={`w-4 h-4 ${threat.eliminated ? 'text-accent' : 'text-destructive'}`} />
-                    )}
-                    <div>
-                      <p className={`text-sm ${threat.destroying ? 'text-red-400' : ''} ${threat.eliminated ? 'line-through text-accent' : ''}`}>
-                        {threat.destroying ? `💥 ${threat.name}` : threat.name}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{threat.type}</p>
+                  <div className="flex items-start gap-4">
+                    {/* Virus Logo */}
+                    <div className="flex-shrink-0 w-16 h-16 rounded-lg bg-background border border-border overflow-hidden flex items-center justify-center">
+                      {threat.generatingLogo ? (
+                        <div className="animate-spin w-6 h-6 border-2 border-accent border-t-transparent rounded-full" />
+                      ) : threat.logoUrl ? (
+                        <img 
+                          src={threat.logoUrl} 
+                          alt={threat.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <Skull className="w-8 h-8 text-destructive" />
+                      )}
+                    </div>
+                    
+                    {/* Threat Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-1">
+                        <p className={`text-sm font-medium ${threat.destroying ? 'text-red-400' : ''} ${threat.eliminated ? 'line-through text-accent' : ''}`}>
+                          {threat.destroying ? `💥 ${threat.name}` : threat.name}
+                        </p>
+                        <span className={`text-xs uppercase font-bold ${
+                          threat.destroying ? 'text-red-500 animate-pulse' : getSeverityColor(threat.severity)
+                        }`}>
+                          {threat.destroying ? '☠️ DESTROYING' : threat.eliminated ? '✓ ELIMINATED' : threat.severity}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mb-2">{threat.type}</p>
+                      
+                      {/* Deploy Button */}
+                      {phase === 'detected' && threat.logoUrl && !threat.destroying && !threat.eliminated && (
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="gap-2 text-xs h-7 bg-gradient-to-r from-purple-600/20 to-pink-600/20 border-purple-500/50 hover:border-purple-400"
+                          onClick={() => deployViaBags(threat)}
+                        >
+                          <Rocket className="w-3 h-3" />
+                          Deploy via BAGS
+                        </Button>
+                      )}
                     </div>
                   </div>
-                  <span className={`text-xs uppercase font-bold ${
-                    threat.destroying ? 'text-red-500 animate-pulse' : getSeverityColor(threat.severity)
-                  }`}>
-                    {threat.destroying ? '☠️ DESTROYING' : threat.eliminated ? '✓ ELIMINATED' : threat.severity}
-                  </span>
                 </div>
               ))}
             </div>
