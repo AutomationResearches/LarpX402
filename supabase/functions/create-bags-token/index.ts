@@ -56,6 +56,11 @@ serve(async (req) => {
       );
     }
 
+    // ========================================
+    // STEP 1: Create Token Info and Metadata
+    // ========================================
+    console.log('Step 1: Creating token info and metadata...');
+
     // Convert base64 to blob for upload
     const imageBytes = Uint8Array.from(atob(imageBase64), c => c.charCodeAt(0));
     const imageBlob = new Blob([imageBytes], { type: imageType || 'image/png' });
@@ -70,28 +75,78 @@ serve(async (req) => {
     };
     const ext = extMap[imageType] || 'png';
 
-    // Build form data for the single create-launch-transaction endpoint
-    const formData = new FormData();
-    formData.append('image', imageBlob, `token-image.${ext}`);
-    formData.append('name', name);
-    formData.append('symbol', symbol.toUpperCase().replace('$', ''));
-    formData.append('description', description);
-    formData.append('launchWallet', creatorPublicKey);
+    const tokenInfoFormData = new FormData();
+    tokenInfoFormData.append('image', imageBlob, `token-image.${ext}`);
+    tokenInfoFormData.append('name', name);
+    tokenInfoFormData.append('symbol', symbol.toUpperCase().replace('$', ''));
+    tokenInfoFormData.append('description', description);
     
-    // Optional social links
-    if (twitter) formData.append('twitter', twitter);
-    if (telegram) formData.append('telegram', telegram);
-    if (website) formData.append('website', website);
+    if (twitter) tokenInfoFormData.append('twitter', twitter);
+    if (telegram) tokenInfoFormData.append('telegram', telegram);
+    if (website) tokenInfoFormData.append('website', website);
+
+    const tokenInfoResponse = await fetch(`${BAGS_API_URL}/token-launch/create-token-info`, {
+      method: 'POST',
+      headers: {
+        'x-api-key': BAGS_API_KEY,
+      },
+      body: tokenInfoFormData,
+    });
+
+    const tokenInfoText = await tokenInfoResponse.text();
+    console.log(`Token info response status: ${tokenInfoResponse.status}`);
     
-    // Initial buy amount
-    if (initialBuyLamports && initialBuyLamports > 0) {
-      formData.append('initialBuyLamports', initialBuyLamports.toString());
-      console.log(`Initial buy: ${initialBuyLamports} lamports`);
+    if (!tokenInfoResponse.ok) {
+      console.error('Token info creation failed:', tokenInfoText);
+      let errorMessage = 'Failed to create token metadata';
+      try {
+        const errorJson = JSON.parse(tokenInfoText);
+        errorMessage = errorJson.error || errorJson.message || errorMessage;
+      } catch { /* use default */ }
+      return new Response(
+        JSON.stringify({ error: errorMessage }),
+        { status: tokenInfoResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
+
+    let tokenInfoResult;
+    try {
+      tokenInfoResult = JSON.parse(tokenInfoText);
+    } catch {
+      console.error('Failed to parse token info response:', tokenInfoText);
+      return new Response(
+        JSON.stringify({ error: 'Invalid response from Bags API' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const tokenMint = tokenInfoResult.response?.tokenMint;
+    const tokenMetadata = tokenInfoResult.response?.tokenMetadata;
+    const imageUrl = tokenInfoResult.response?.tokenLaunch?.image;
+
+    if (!tokenMint || !tokenMetadata) {
+      console.error('Missing tokenMint or tokenMetadata in response:', tokenInfoResult);
+      return new Response(
+        JSON.stringify({ error: 'Invalid token info response - missing required fields' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log(`Token info created: mint=${tokenMint}, metadata=${tokenMetadata}`);
+
+    // ========================================
+    // STEP 2: Create Fee Share Config
+    // ========================================
+    console.log('Step 2: Creating fee share config...');
+
+    // Build claimers and basis points arrays
+    // Creator always gets remaining fees
+    const claimersArray: string[] = [creatorPublicKey];
+    const basisPointsArray: number[] = [];
     
-    // Fee sharing configuration
     if (feeClaimers && Array.isArray(feeClaimers) && feeClaimers.length > 0) {
-      // Calculate creator's share (remaining after all fee claimers)
+      // For now, all fees go to creator since we don't have wallet addresses for social usernames
+      // The Bags SDK has getLaunchWalletV2 to lookup wallets but we're using REST API
       const totalClaimerBps = feeClaimers.reduce((sum: number, fc: any) => sum + (fc.bps || 0), 0);
       const creatorBps = 10000 - totalClaimerBps;
       
@@ -102,75 +157,137 @@ serve(async (req) => {
         );
       }
       
-      // Fee claimers as JSON array
-      const feeClaimersData = feeClaimers.map((fc: any) => ({
-        provider: fc.provider,
-        username: fc.username.trim().replace('@', ''),
-        bps: fc.bps,
-      }));
-      
-      formData.append('feeClaimers', JSON.stringify(feeClaimersData));
-      console.log(`Fee sharing with ${feeClaimers.length} partners, creator gets ${creatorBps / 100}%`);
+      basisPointsArray.push(creatorBps);
+      console.log(`Creator gets ${creatorBps / 100}% of fees (fee sharing with ${feeClaimers.length} partners not fully supported via REST API)`);
+    } else {
+      // Creator gets 100%
+      basisPointsArray.push(10000);
     }
 
-    console.log('Calling Bags API create-launch-transaction...');
-    
-    const response = await fetch(`${BAGS_API_URL}/token-launch/create-launch-transaction`, {
+    const feeSharePayload = {
+      payer: creatorPublicKey,
+      baseMint: tokenMint,
+      claimersArray,
+      basisPointsArray,
+    };
+
+    console.log('Fee share payload:', JSON.stringify(feeSharePayload));
+
+    const feeShareResponse = await fetch(`${BAGS_API_URL}/fee-share/config`, {
       method: 'POST',
       headers: {
         'x-api-key': BAGS_API_KEY,
+        'Content-Type': 'application/json',
       },
-      body: formData,
+      body: JSON.stringify(feeSharePayload),
     });
 
-    const responseText = await response.text();
-    console.log(`Bags API response status: ${response.status}`);
-    
-    if (!response.ok) {
-      console.error('Bags API error:', responseText);
-      
-      // Try to parse error message
-      let errorMessage = 'Failed to create token on Bags';
+    const feeShareText = await feeShareResponse.text();
+    console.log(`Fee share response status: ${feeShareResponse.status}`);
+
+    if (!feeShareResponse.ok) {
+      console.error('Fee share config creation failed:', feeShareText);
+      let errorMessage = 'Failed to create fee share config';
       try {
-        const errorJson = JSON.parse(responseText);
-        errorMessage = errorJson.error || errorJson.message || errorMessage;
-      } catch {
-        // Use response text if not JSON
-        if (responseText.length < 200) {
-          errorMessage = responseText;
-        }
-      }
-      
+        const errorJson = JSON.parse(feeShareText);
+        errorMessage = errorJson.error || errorJson.response || errorMessage;
+      } catch { /* use default */ }
       return new Response(
         JSON.stringify({ error: errorMessage }),
-        { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: feeShareResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    let result;
+    let feeShareResult;
     try {
-      result = JSON.parse(responseText);
+      feeShareResult = JSON.parse(feeShareText);
     } catch {
-      console.error('Failed to parse Bags API response:', responseText);
+      console.error('Failed to parse fee share response:', feeShareText);
       return new Response(
-        JSON.stringify({ error: 'Invalid response from Bags API' }),
+        JSON.stringify({ error: 'Invalid fee share response from Bags API' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('Bags token creation successful:', {
-      tokenMint: result.tokenMint,
-      hasTransaction: !!result.transaction,
+    const configKey = feeShareResult.response?.meteoraConfigKey;
+    const needsCreation = feeShareResult.response?.needsCreation;
+    const configTransactions = feeShareResult.response?.transactions || [];
+
+    console.log(`Fee share config: configKey=${configKey}, needsCreation=${needsCreation}, txCount=${configTransactions.length}`);
+
+    // ========================================
+    // STEP 3: Create Launch Transaction
+    // ========================================
+    console.log('Step 3: Creating launch transaction...');
+
+    const launchPayload = {
+      ipfs: tokenMetadata,
+      tokenMint,
+      wallet: creatorPublicKey,
+      initialBuyLamports: initialBuyLamports || 0,
+      configKey,
+    };
+
+    console.log('Launch payload:', JSON.stringify(launchPayload));
+
+    const launchResponse = await fetch(`${BAGS_API_URL}/token-launch/create-launch-transaction`, {
+      method: 'POST',
+      headers: {
+        'x-api-key': BAGS_API_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(launchPayload),
     });
 
-    // Return the transaction data for signing
+    const launchText = await launchResponse.text();
+    console.log(`Launch response status: ${launchResponse.status}`);
+
+    if (!launchResponse.ok) {
+      console.error('Launch transaction creation failed:', launchText);
+      let errorMessage = 'Failed to create launch transaction';
+      try {
+        const errorJson = JSON.parse(launchText);
+        errorMessage = errorJson.error || errorJson.response || errorMessage;
+      } catch { /* use default */ }
+      return new Response(
+        JSON.stringify({ error: errorMessage }),
+        { status: launchResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    let launchResult;
+    try {
+      launchResult = JSON.parse(launchText);
+    } catch {
+      console.error('Failed to parse launch response:', launchText);
+      return new Response(
+        JSON.stringify({ error: 'Invalid launch response from Bags API' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const launchTransaction = launchResult.response;
+
+    if (!launchTransaction) {
+      console.error('Missing transaction in launch response:', launchResult);
+      return new Response(
+        JSON.stringify({ error: 'No transaction returned from Bags API' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log('Launch transaction created successfully');
+
+    // Return all transaction data
+    // If config needs creation, we need to send those transactions first
     return new Response(
       JSON.stringify({
         success: true,
-        transaction: result.transaction,
-        tokenMint: result.tokenMint,
-        metadataUri: result.metadataUri || result.tokenMetadata,
-        imageUrl: result.imageUrl,
+        transaction: launchTransaction,
+        configTransactions: needsCreation ? configTransactions : [],
+        tokenMint,
+        metadataUri: tokenMetadata,
+        imageUrl,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
