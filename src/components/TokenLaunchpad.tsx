@@ -267,20 +267,55 @@ export default function TokenLaunchpad({ virusThreat }: TokenLaunchpadProps) {
       if (fnError) throw new Error(fnError.message);
       if (data.error) throw new Error(data.error);
 
-      // Single-step flow: just sign the launch transaction
-      setStatus('signing');
-      
       const bs58 = await import('bs58');
-      const txBytes = bs58.default.decode(data.transaction);
-      const transaction = VersionedTransaction.deserialize(txBytes);
-      const signedTx = await signTransaction(transaction);
-      
-      setStatus('confirming');
-      const launchSignature = await connection.sendRawTransaction(signedTx.serialize(), {
-        skipPreflight: false,
-        preflightCommitment: 'confirmed',
-      });
-      await connection.confirmTransaction(launchSignature, 'confirmed');
+      let launchSignature: string;
+
+      // Handle multi-sign flow (config needs creation)
+      if (data.step === 'multi' && data.configTransactions?.length > 0) {
+        setStatus('signing');
+        
+        // Sign and send config transactions first
+        for (const txData of data.configTransactions) {
+          const txString = typeof txData === 'string' ? txData : txData.transaction;
+          const configTxBytes = bs58.default.decode(txString);
+          const configTx = VersionedTransaction.deserialize(configTxBytes);
+          const signedConfigTx = await signTransaction(configTx);
+          
+          setStatus('confirming');
+          const configSig = await connection.sendRawTransaction(signedConfigTx.serialize(), {
+            skipPreflight: false,
+            preflightCommitment: 'confirmed',
+          });
+          await connection.confirmTransaction(configSig, 'confirmed');
+          setStatus('signing');
+        }
+        
+        // Now sign the launch transaction
+        const launchTxBytes = bs58.default.decode(data.launchTransaction);
+        const launchTx = VersionedTransaction.deserialize(launchTxBytes);
+        const signedLaunchTx = await signTransaction(launchTx);
+        
+        setStatus('confirming');
+        launchSignature = await connection.sendRawTransaction(signedLaunchTx.serialize(), {
+          skipPreflight: false,
+          preflightCommitment: 'confirmed',
+        });
+        await connection.confirmTransaction(launchSignature, 'confirmed');
+        
+      } else {
+        // Single-step flow: just sign the launch transaction
+        setStatus('signing');
+        const txBytes = bs58.default.decode(data.transaction);
+        const transaction = VersionedTransaction.deserialize(txBytes);
+        const signedTx = await signTransaction(transaction);
+        
+        setStatus('confirming');
+        launchSignature = await connection.sendRawTransaction(signedTx.serialize(), {
+          skipPreflight: false,
+          preflightCommitment: 'confirmed',
+        });
+        await connection.confirmTransaction(launchSignature, 'confirmed');
+      }
 
       setStatus('saving');
       
