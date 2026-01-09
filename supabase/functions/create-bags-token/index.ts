@@ -5,7 +5,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const BAGS_API_URL = 'https://api.bags.fm';
+const BAGS_API_URL = 'https://public-api-v2.bags.fm/api/v1';
 
 serve(async (req) => {
   // Handle CORS preflight
@@ -16,6 +16,7 @@ serve(async (req) => {
   try {
     const BAGS_API_KEY = Deno.env.get('BAGS_API_KEY');
     if (!BAGS_API_KEY) {
+      console.error('BAGS_API_KEY is not configured');
       return new Response(
         JSON.stringify({ error: 'BAGS_API_KEY is not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -55,77 +56,40 @@ serve(async (req) => {
       );
     }
 
-    // Step 1: Upload image to get a URL
-    console.log('Step 1: Uploading image...');
-    
     // Convert base64 to blob for upload
     const imageBytes = Uint8Array.from(atob(imageBase64), c => c.charCodeAt(0));
     const imageBlob = new Blob([imageBytes], { type: imageType || 'image/png' });
     
-    const imageFormData = new FormData();
-    imageFormData.append('file', imageBlob, 'token-image.png');
-
-    const imageUploadResponse = await fetch(`${BAGS_API_URL}/v1/upload`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${BAGS_API_KEY}`,
-      },
-      body: imageFormData,
-    });
-
-    if (!imageUploadResponse.ok) {
-      const errorText = await imageUploadResponse.text();
-      console.error('Image upload failed:', errorText);
-      return new Response(
-        JSON.stringify({ error: 'Failed to upload image to Bags' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const imageUploadResult = await imageUploadResponse.json();
-    const imageUrl = imageUploadResult.url;
-    console.log('Image uploaded successfully:', imageUrl);
-
-    // Step 2: Create token metadata
-    console.log('Step 2: Creating token metadata...');
-    
-    const metadataPayload = {
-      imageUrl,
-      name,
-      symbol: symbol.toUpperCase().replace('$', ''),
-      description,
-      twitter: twitter || undefined,
-      telegram: telegram || undefined,
-      website: website || undefined,
+    // Determine file extension from mime type
+    const extMap: Record<string, string> = {
+      'image/png': 'png',
+      'image/jpeg': 'jpg',
+      'image/jpg': 'jpg',
+      'image/gif': 'gif',
+      'image/webp': 'webp',
     };
+    const ext = extMap[imageType] || 'png';
 
-    const metadataResponse = await fetch(`${BAGS_API_URL}/v1/token-launch/metadata`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${BAGS_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(metadataPayload),
-    });
-
-    if (!metadataResponse.ok) {
-      const errorText = await metadataResponse.text();
-      console.error('Metadata creation failed:', errorText);
-      return new Response(
-        JSON.stringify({ error: 'Failed to create token metadata' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // Build form data for the single create-launch-transaction endpoint
+    const formData = new FormData();
+    formData.append('image', imageBlob, `token-image.${ext}`);
+    formData.append('name', name);
+    formData.append('symbol', symbol.toUpperCase().replace('$', ''));
+    formData.append('description', description);
+    formData.append('launchWallet', creatorPublicKey);
+    
+    // Optional social links
+    if (twitter) formData.append('twitter', twitter);
+    if (telegram) formData.append('telegram', telegram);
+    if (website) formData.append('website', website);
+    
+    // Initial buy amount
+    if (initialBuyLamports && initialBuyLamports > 0) {
+      formData.append('initialBuyLamports', initialBuyLamports.toString());
+      console.log(`Initial buy: ${initialBuyLamports} lamports`);
     }
-
-    const metadataResult = await metadataResponse.json();
-    console.log('Metadata created:', metadataResult);
-
-    // Step 3: Create fee share config
-    console.log('Step 3: Creating fee share config...');
     
-    // Build fee claimers array - creator must be explicit
-    const feeClaimersPayload: Array<{ user: string; userBps: number }> = [];
-    
+    // Fee sharing configuration
     if (feeClaimers && Array.isArray(feeClaimers) && feeClaimers.length > 0) {
       // Calculate creator's share (remaining after all fee claimers)
       const totalClaimerBps = feeClaimers.reduce((sum: number, fc: any) => sum + (fc.bps || 0), 0);
@@ -138,88 +102,75 @@ serve(async (req) => {
         );
       }
       
-      // Add creator first with explicit BPS
-      feeClaimersPayload.push({ user: creatorPublicKey, userBps: creatorBps });
-      console.log(`Creator will receive ${creatorBps / 100}% of fees`);
+      // Fee claimers as JSON array
+      const feeClaimersData = feeClaimers.map((fc: any) => ({
+        provider: fc.provider,
+        username: fc.username.trim().replace('@', ''),
+        bps: fc.bps,
+      }));
       
-      // Note: Fee claimers by social username would require looking up their wallet
-      // For now, we just give all to creator - full implementation would use SDK
-      // to lookup wallets via sdk.state.getLaunchWalletV2(username, provider)
-      console.log(`Fee sharing with ${feeClaimers.length} partners configured`);
-    } else {
-      // No fee claimers - creator gets all fees
-      feeClaimersPayload.push({ user: creatorPublicKey, userBps: 10000 });
+      formData.append('feeClaimers', JSON.stringify(feeClaimersData));
+      console.log(`Fee sharing with ${feeClaimers.length} partners, creator gets ${creatorBps / 100}%`);
     }
-    
-    const configPayload = {
-      tokenMint: metadataResult.tokenMint,
-      creatorWallet: creatorPublicKey,
-      feeClaimers: feeClaimersPayload,
-    };
 
-    const configResponse = await fetch(`${BAGS_API_URL}/v1/token-launch/config`, {
+    console.log('Calling Bags API create-launch-transaction...');
+    
+    const response = await fetch(`${BAGS_API_URL}/token-launch/create-launch-transaction`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${BAGS_API_KEY}`,
-        'Content-Type': 'application/json',
+        'x-api-key': BAGS_API_KEY,
       },
-      body: JSON.stringify(configPayload),
+      body: formData,
     });
 
-    if (!configResponse.ok) {
-      const errorText = await configResponse.text();
-      console.error('Config creation failed:', errorText);
+    const responseText = await response.text();
+    console.log(`Bags API response status: ${response.status}`);
+    
+    if (!response.ok) {
+      console.error('Bags API error:', responseText);
+      
+      // Try to parse error message
+      let errorMessage = 'Failed to create token on Bags';
+      try {
+        const errorJson = JSON.parse(responseText);
+        errorMessage = errorJson.error || errorJson.message || errorMessage;
+      } catch {
+        // Use response text if not JSON
+        if (responseText.length < 200) {
+          errorMessage = responseText;
+        }
+      }
+      
       return new Response(
-        JSON.stringify({ error: 'Failed to create fee share config' }),
+        JSON.stringify({ error: errorMessage }),
+        { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    let result;
+    try {
+      result = JSON.parse(responseText);
+    } catch {
+      console.error('Failed to parse Bags API response:', responseText);
+      return new Response(
+        JSON.stringify({ error: 'Invalid response from Bags API' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const configResult = await configResponse.json();
-    console.log('Config created:', configResult);
-
-    // Step 4: Get launch transaction
-    console.log('Step 4: Getting launch transaction...');
-    
-    const launchPayload = {
-      metadataUrl: metadataResult.tokenMetadata,
-      tokenMint: metadataResult.tokenMint,
-      launchWallet: creatorPublicKey,
-      initialBuyLamports: initialBuyLamports || 0,
-      configKey: configResult.configKey,
-    };
-    
-    console.log(`Initial buy lamports: ${launchPayload.initialBuyLamports}`);
-
-    const launchResponse = await fetch(`${BAGS_API_URL}/v1/token-launch/transaction`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${BAGS_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(launchPayload),
+    console.log('Bags token creation successful:', {
+      tokenMint: result.tokenMint,
+      hasTransaction: !!result.transaction,
     });
-
-    if (!launchResponse.ok) {
-      const errorText = await launchResponse.text();
-      console.error('Launch transaction creation failed:', errorText);
-      return new Response(
-        JSON.stringify({ error: 'Failed to create launch transaction' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const launchResult = await launchResponse.json();
-    console.log('Launch transaction created successfully');
 
     // Return the transaction data for signing
     return new Response(
       JSON.stringify({
         success: true,
-        transaction: launchResult.transaction,
-        tokenMint: metadataResult.tokenMint,
-        metadataUri: metadataResult.tokenMetadata,
-        imageUrl,
+        transaction: result.transaction,
+        tokenMint: result.tokenMint,
+        metadataUri: result.metadataUri || result.tokenMetadata,
+        imageUrl: result.imageUrl,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
