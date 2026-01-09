@@ -276,7 +276,10 @@ export default function TokenLaunchpad({ virusThreat }: TokenLaunchpadProps) {
       if (data.step === 'config' && data.configTransactions?.length > 0) {
         // Sign and send config transactions first
         for (let i = 0; i < data.configTransactions.length; i++) {
-          const configTxBytes = bs58.default.decode(data.configTransactions[i]);
+          // Config transactions may be objects with {transaction, blockhash} or plain strings
+          const txData = data.configTransactions[i];
+          const txString = typeof txData === 'string' ? txData : txData.transaction;
+          const configTxBytes = bs58.default.decode(txString);
           const configTx = VersionedTransaction.deserialize(configTxBytes);
           const signedConfigTx = await signTransaction(configTx);
           const configSig = await connection.sendRawTransaction(signedConfigTx.serialize(), {
