@@ -269,9 +269,11 @@ export default function TokenLaunchpad({ virusThreat }: TokenLaunchpadProps) {
 
       const bs58 = await import('bs58');
       let launchSignature: string;
+      let tokenMint = data.tokenMint;
+      let imageUrl = data.imageUrl;
 
-      // Handle multi-sign flow (config needs creation)
-      if (data.step === 'multi' && data.configTransactions?.length > 0) {
+      // Handle config-first flow (config needs to be created on-chain first)
+      if (data.step === 'config' && data.configTransactions?.length > 0) {
         setStatus('signing');
         
         // Sign and send config transactions first
@@ -290,8 +292,24 @@ export default function TokenLaunchpad({ virusThreat }: TokenLaunchpadProps) {
           setStatus('signing');
         }
         
-        // Now sign the launch transaction
-        const launchTxBytes = bs58.default.decode(data.launchTransaction);
+        // Now get the launch transaction (config is now on-chain)
+        setStatus('creating');
+        const { data: launchData, error: launchError } = await supabase.functions.invoke('get-launch-transaction', {
+          body: {
+            tokenMint: data.tokenMint,
+            metadataUri: data.metadataUri,
+            configKey: data.configKey,
+            creatorPublicKey: publicKey.toBase58(),
+            initialBuyLamports: buyAmountSol > 0 ? Math.floor(buyAmountSol * LAMPORTS_PER_SOL) : 0,
+          },
+        });
+
+        if (launchError) throw new Error(launchError.message);
+        if (launchData.error) throw new Error(launchData.error);
+
+        // Sign the launch transaction
+        setStatus('signing');
+        const launchTxBytes = bs58.default.decode(launchData.transaction);
         const launchTx = VersionedTransaction.deserialize(launchTxBytes);
         const signedLaunchTx = await signTransaction(launchTx);
         
@@ -303,7 +321,7 @@ export default function TokenLaunchpad({ virusThreat }: TokenLaunchpadProps) {
         await connection.confirmTransaction(launchSignature, 'confirmed');
         
       } else {
-        // Single-step flow: just sign the launch transaction
+        // Single-step flow: just sign the launch transaction (config already exists)
         setStatus('signing');
         const txBytes = bs58.default.decode(data.transaction);
         const transaction = VersionedTransaction.deserialize(txBytes);
@@ -335,7 +353,7 @@ export default function TokenLaunchpad({ virusThreat }: TokenLaunchpadProps) {
       });
 
       setTxSignature(launchSignature);
-      setMintAddress(data.tokenMint);
+      setMintAddress(tokenMint);
       setStatus('success');
       
     } catch (err: any) {
