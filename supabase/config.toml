@@ -1,1 +1,4 @@
 project_id = "ptxssurgfktheqerlhab"
+
+[functions.generate-virus-logo]
+verify_jwt = false
